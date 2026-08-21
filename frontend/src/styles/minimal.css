@@ -104,8 +104,9 @@ html, body {
 }
 
 .brand-subtitle {
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.70rem;
+  font-style: italic;
+  font-weight: 400;
   color: var(--text-muted);
   letter-spacing: 0.2px;
   opacity: 0.85;

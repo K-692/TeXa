@@ -38,7 +38,7 @@ export default function Header({
         title={currentPage === 'editor' ? 'Return to Home / Setup' : undefined}
       >
         <img src={texaLogo} alt="TeXa" className="brand-logo" />
-        <span className="brand-subtitle">Text to LaTeX Assistant</span>
+        <span className="brand-subtitle">The LaTeX Assistant</span>
       </div>
 
       <div className="header-actions">
