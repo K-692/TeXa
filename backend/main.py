@@ -555,10 +555,13 @@ def serve_root_index():
 
 @app.get("/favicon.ico")
 def serve_favicon():
-    """Serve application favicon if available."""
+    """Serve application favicon / logo if available."""
     fav_file = os.path.join(frontend_dist, "favicon.ico")
     if os.path.exists(fav_file):
         return FileResponse(fav_file)
+    logo_file = os.path.join(frontend_dist, "logo.png")
+    if os.path.exists(logo_file):
+        return FileResponse(logo_file, media_type="image/png")
     return Response(status_code=204)
 
 if os.path.exists(frontend_dist):

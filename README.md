@@ -2,8 +2,6 @@
   <img src="frontend/src/assets/logo.png" alt="TeXa Logo" width="220" />
 </p>
 
-<h1 align="center">TeXa</h1>
-
 <p align="center">
   <strong>Minimalist, Privacy-First, Local AI-Powered LaTeX Editor & Live Compiler</strong>
 </p>
@@ -30,36 +28,37 @@ Whether you are writing academic papers, mathematical proofs, resumes, or lectur
 ## ✨ Key Features
 
 - **🧠 Zero-Cloud Local AI Inference**
+
   - Runs Hugging Face models locally using **PyTorch** with full hardware acceleration:
     - ⚡ **Apple Silicon (MPS)** for M1/M2/M3/M4 Macs.
     - 🚀 **NVIDIA CUDA** for GeForce/RTX/Tesla GPUs.
     - ⚙️ **Optimized Multi-Threaded CPU** fallback.
   - Supports popular lightweight architectures like **Qwen 2.5 Coder (1.5B / 3B / 7B)**, **Google Gemma 3 (1B / 4B)**, **Llama 3.2**, or any custom CausalLM from Hugging Face Hub.
-
 - **⚡ Hybrid LaTeX Compilation & Instant PDF Viewer**
+
   - Works with **Tectonic** (automatic on-the-fly package fetching), **latexmk**, or **pdflatex**.
   - Includes continuous validation that compiles your documents as you write.
   - Integrated full-featured PDF viewer with page navigation, zoom, and fit modes.
-
 - **📝 AI Code & Template Generation**
+
   - Dedicated prompt-to-LaTeX generator with active document context awareness.
   - Instantly produces clean code for tables (`booktabs`), mathematical systems, TikZ flowcharts, and full document boilerplate.
   - Guardrailed to ensure clean, strictly compilation-ready LaTeX.
-
 - **🛠️ Autonomous Compiler Diagnostic & Error Resolver**
+
   - Automatically parses compilation logs and identifies the exact file and line number causing the issue.
   - Preprocesses line-numbered snippets and delivers root-cause explanations with 1-click copyable fixes.
-
 - **💻 VS Code-Grade Monaco Editor**
+
   - Full syntax highlighting for LaTeX and TeX macros.
   - Integrated error squiggles and diagnostic markers.
   - Multi-tab document navigation with unsaved change badges and clean indentation.
-
 - **📁 Project Workspace & File Management**
+
   - Nested directory tree navigation with file and folder creation, deletion, and renaming.
   - Configurable custom project directories.
-
 - **🎨 Minimalist Dark & Light Themes**
+
   - Fully responsive, sleek UI with customizable dark and light modes.
 
 ---
@@ -68,12 +67,12 @@ Whether you are writing academic papers, mathematical proofs, resumes, or lectur
 
 Before installing TeXa, ensure you have the following prerequisites installed on your system:
 
-| Tool | Minimum Version | Description |
-| :--- | :--- | :--- |
-| **Python** | `3.10+` | Backend server, API, and PyTorch AI engine |
-| **Node.js & npm** | `18.0+` | Frontend web interface and Vite asset pipeline |
-| **LaTeX Engine** | Any | **[Tectonic](https://tectonic-typesetting.github.io/)** *(Highly Recommended)*, **TeX Live**, **MacTeX**, or **MiKTeX** |
-| **Git** | `2.0+` | Version control for cloning and updates |
+| Tool                    | Minimum Version | Description                                                                                                                                      |
+| :---------------------- | :-------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Python**        | `3.10+`       | Backend server, API, and PyTorch AI engine                                                                                                       |
+| **Node.js & npm** | `18.0+`       | Frontend web interface and Vite asset pipeline                                                                                                   |
+| **LaTeX Engine**  | Any             | **[Tectonic](https://tectonic-typesetting.github.io/)** *(Highly Recommended)*, **TeX Live**, **MacTeX**, or **MiKTeX** |
+| **Git**           | `2.0+`        | Version control for cloning and updates                                                                                                          |
 
 ---
 
@@ -84,40 +83,42 @@ Follow the instructions below for your operating system:
 ### 🍎 macOS Setup
 
 1. **Install Prerequisites via Homebrew** (if not already installed):
+
    ```bash
    brew install python node tectonic git
    ```
-
 2. **Clone the Repository**:
+
    ```bash
    git clone https://github.com/K-692/TeXa.git
    cd TeXa
    ```
-
 3. **Set Up Python Virtual Environment**:
+
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
-
 4. **Install Python Dependencies**:
+
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-
 5. **Install Frontend Dependencies & Build Assets**:
+
    ```bash
    cd frontend
    npm install
    npm run build
    cd ..
    ```
-
 6. **Launch TeXa**:
+
    ```bash
    python run.py
    ```
+
    *TeXa will start the backend server and automatically open `http://localhost:8000` in your default browser.*
 
 ---
@@ -125,41 +126,43 @@ Follow the instructions below for your operating system:
 ### 🪟 Windows Setup
 
 1. **Install Prerequisites** via [Winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) or manual installers:
+
    ```powershell
    winget install Python.Python.3.11
    winget install OpenJS.NodeJS.LTS
    winget install Git.Git
    winget install TectonicTypesetting.Tectonic
    ```
-   *(Alternative LaTeX: [MiKTeX](https://miktex.org/download))*
 
+   *(Alternative LaTeX: [MiKTeX](https://miktex.org/download))*
 2. **Clone the Repository**:
+
    ```powershell
    git clone https://github.com/K-692/TeXa.git
    cd TeXa
    ```
-
 3. **Set Up Python Virtual Environment**:
+
    ```powershell
    python -m venv venv
    .\venv\Scripts\Activate.ps1
    ```
-
 4. **Install Python Dependencies**:
+
    ```powershell
    python -m pip install --upgrade pip
    pip install -r requirements.txt
    ```
-
 5. **Install Frontend Dependencies & Build Assets**:
+
    ```powershell
    cd frontend
    npm install
    npm run build
    cd ..
    ```
-
 6. **Launch TeXa**:
+
    ```powershell
    python run.py
    ```
@@ -169,6 +172,7 @@ Follow the instructions below for your operating system:
 ### 🐧 Linux Setup (Ubuntu / Debian / Fedora / Arch)
 
 1. **Install Prerequisites**:
+
    - **Ubuntu / Debian**:
      ```bash
      sudo apt update
@@ -184,34 +188,34 @@ Follow the instructions below for your operating system:
      ```bash
      sudo pacman -S python python-pip nodejs npm git tectonic
      ```
-
 2. **Clone the Repository**:
+
    ```bash
    git clone https://github.com/K-692/TeXa.git
    cd TeXa
    ```
-
 3. **Set Up Python Virtual Environment**:
+
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
-
 4. **Install Python Dependencies**:
+
    ```bash
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-
 5. **Install Frontend Dependencies & Build Assets**:
+
    ```bash
    cd frontend
    npm install
    npm run build
    cd ..
    ```
-
 6. **Launch TeXa**:
+
    ```bash
    python run.py
    ```
@@ -241,13 +245,13 @@ WORKING_DIRECTORY=./projects
 
 TeXa supports any Hugging Face CausalLM model. For best performance on personal laptops and desktops:
 
-| Model ID | VRAM / RAM | Description |
-| :--- | :--- | :--- |
-| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | ~3 GB | Ultra-fast, lightweight model ideal for quick syntax and equations. |
-| `Qwen/Qwen2.5-Coder-3B-Instruct` | ~5 GB | **Recommended**. Outstanding LaTeX syntax and table generation. |
-| `google/gemma-3-1b-it` | ~2.5 GB | Google's high-efficiency lightweight multimodal/text model. *(Requires HF Token)* |
-| `meta-llama/Llama-3.2-3B-Instruct` | ~5 GB | Versatile general assistance and document debugging. *(Requires HF Token)* |
-| `Custom Model ID` | Variable | Enter any Hugging Face model identifier in the UI model picker. |
+| Model ID                             | VRAM / RAM | Description                                                                        |
+| :----------------------------------- | :--------- | :--------------------------------------------------------------------------------- |
+| `Qwen/Qwen2.5-Coder-1.5B-Instruct` | ~3 GB      | Ultra-fast, lightweight model ideal for quick syntax and equations.                |
+| `Qwen/Qwen2.5-Coder-3B-Instruct`   | ~5 GB      | **Recommended**. Outstanding LaTeX syntax and table generation.              |
+| `google/gemma-3-1b-it`             | ~2.5 GB    | Google's high-efficiency lightweight multimodal/text model.*(Requires HF Token)* |
+| `meta-llama/Llama-3.2-3B-Instruct` | ~5 GB      | Versatile general assistance and document debugging.*(Requires HF Token)*        |
+| `Custom Model ID`                  | Variable   | Enter any Hugging Face model identifier in the UI model picker.                    |
 
 *Downloaded weights are stored locally in the `models/` directory for offline reuse.*
 
