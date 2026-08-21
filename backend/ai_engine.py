@@ -50,13 +50,24 @@ except Exception as e:
 # Safe PyTorch & Transformers Import Handler
 try:
     import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM, StoppingCriteria, StoppingCriteriaList
+    from transformers import (
+        AutoConfig,
+        AutoTokenizer,
+        AutoModelForCausalLM,
+        AutoModelForSeq2SeqLM,
+        AutoModel,
+        StoppingCriteria,
+        StoppingCriteriaList
+    )
     TORCH_TRANSFORMERS_AVAILABLE = True
     TORCH_IMPORT_ERROR = None
 except Exception as e:
     torch = None
+    AutoConfig = None
     AutoTokenizer = None
     AutoModelForCausalLM = None
+    AutoModelForSeq2SeqLM = None
+    AutoModel = None
     StoppingCriteria = object
     StoppingCriteriaList = list
     TORCH_TRANSFORMERS_AVAILABLE = False
@@ -126,6 +137,9 @@ class AIEngineManager:
         self.loaded_model_id: Optional[str] = None
         self.tokenizer = None
         self.model = None
+        self.is_encoder_decoder = False
+        self.preferred_device = "cpu"
+        self.preferred_dtype = None
         self.device = "cpu"
         self.torch_dtype = None
 
@@ -135,7 +149,7 @@ class AIEngineManager:
         # Cancellation event for stopping active token generation
         self.stop_event = threading.Event()
 
-        # Detect optimal hardware acceleration
+        # Detect optimal hardware acceleration (CUDA / MPS / CPU)
         self._detect_device()
 
     def _clean_token(self, token: Any) -> Optional[str]:
@@ -168,25 +182,35 @@ class AIEngineManager:
             if "HF_TOKEN" in os.environ:
                 del os.environ["HF_TOKEN"]
 
-    def _detect_device(self):
-        """Detect and configure optimal hardware acceleration device (Apple MPS, CUDA, or CPU)."""
+    def detect_optimal_device(self) -> Tuple[str, Any]:
+        """
+        Dynamically determine the highest-performance acceleration hardware available.
+        Priority: NVIDIA CUDA GPU -> Apple Silicon Metal (MPS) -> CPU fallback.
+        Returns a tuple of (device_string, recommended_torch_dtype).
+        """
         if not TORCH_TRANSFORMERS_AVAILABLE or torch is None:
-            self.device = "cpu"
-            self.torch_dtype = None
-            return
+            return "cpu", None
 
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-            self.torch_dtype = torch.float16
-            print("[TeXa AI Engine] Apple Silicon Metal (MPS) hardware acceleration active.")
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-            self.torch_dtype = torch.float16
-            print(f"[TeXa AI Engine] NVIDIA CUDA GPU acceleration active on {torch.cuda.get_device_name(0)}.")
-        else:
-            self.device = "cpu"
-            self.torch_dtype = torch.float32
-            print("[TeXa AI Engine] Running on CPU.")
+        # 1. NVIDIA CUDA GPU Acceleration
+        if torch.cuda.is_available():
+            dev_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "CUDA"
+            print(f"[TeXa AI Engine] Hardware Acceleration: NVIDIA CUDA GPU ({dev_name}) active.", flush=True)
+            return "cuda", torch.float16
+
+        # 2. Apple Silicon Metal Performance Shaders (MPS) Acceleration
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available() and torch.backends.mps.is_built():
+            print("[TeXa AI Engine] Hardware Acceleration: Apple Silicon Metal (MPS) active.", flush=True)
+            return "mps", torch.float16
+
+        # 3. CPU Fallback
+        print("[TeXa AI Engine] Hardware Acceleration: Running on CPU.", flush=True)
+        return "cpu", torch.float32
+
+    def _detect_device(self):
+        """Configure default hardware device and dtype on initialization."""
+        self.preferred_device, self.preferred_dtype = self.detect_optimal_device()
+        self.device = self.preferred_device
+        self.torch_dtype = self.preferred_dtype
 
     # ----------------- LOCAL MODEL DISCOVERY & DOWNLOAD -----------------
 
@@ -228,6 +252,8 @@ class AIEngineManager:
     def get_local_models(self) -> List[Dict[str, Any]]:
         """
         Scan TeXa/models directory for locally downloaded model folders.
+        Parses config.json to detect exact architecture types (e.g. Causal LM vs Seq2Seq LM),
+        parameter counts, and formats.
         Returns a list of local model descriptors.
         """
         local_models = []
@@ -245,13 +271,38 @@ class AIEngineManager:
                     has_weights = any(f.endswith(".safetensors") or f.endswith(".bin") or f.endswith(".pt") for f in files)
                     if (has_config or has_weights) and len(files) > 1:
                         clean_id = item.replace("--", "/")
+                        arch_label = "Universal Model"
+                        model_type = ""
+                        is_seq2seq = False
+
+                        # Inspect config.json for architecture details if present
+                        cfg_path = os.path.join(item_path, "config.json")
+                        if os.path.exists(cfg_path):
+                            try:
+                                with open(cfg_path, "r", encoding="utf-8") as cf:
+                                    cfg_data = json.load(cf)
+                                    archs = cfg_data.get("architectures", [])
+                                    model_type = cfg_data.get("model_type", "")
+                                    is_seq2seq = bool(cfg_data.get("is_encoder_decoder", False))
+                                    if archs:
+                                        arch_label = archs[0]
+                                    elif is_seq2seq:
+                                        arch_label = "Seq2Seq LM"
+                                    elif model_type:
+                                        arch_label = f"{model_type.capitalize()} LM"
+                            except Exception:
+                                pass
+
                         local_models.append({
                             "id": clean_id,
                             "name": clean_id.split("/")[-1],
-                            "description": f"Stored locally inside TeXa models folder ({clean_id}).",
+                            "description": f"Stored locally in TeXa models ({arch_label}).",
                             "is_local": True,
                             "is_downloaded": True,
                             "folder_path": item_path,
+                            "architecture": arch_label,
+                            "model_type": model_type,
+                            "is_encoder_decoder": is_seq2seq,
                             "param_num": extract_param_num(clean_id),
                             "param_display": get_param_display_string(clean_id)
                         })
@@ -274,6 +325,7 @@ class AIEngineManager:
             "progress": self.progress,
             "message": self.status_message,
             "device": self.device,
+            "preferred_device": self.preferred_device,
             "download_speed": self.download_speed,
             "downloaded_size": self.downloaded_size,
             "total_size": self.total_size,
@@ -343,7 +395,7 @@ class AIEngineManager:
             self.status_message = f"Failed to download model {model_id}: {str(e)}"
             print(f"[TeXa AI Engine] Error downloading model {model_id}: {e}")
 
-    # ----------------- PYTORCH / TRANSFORMERS MODEL RUNNER -----------------
+    # ----------------- UNIVERSAL PYTORCH / TRANSFORMERS MODEL RUNNER -----------------
 
     def _resolve_model_path(self, model_id: str) -> str:
         """Resolve local folder path inside TeXa/models or fallback to repo ID."""
@@ -364,9 +416,86 @@ class AIEngineManager:
 
         return model_id
 
+    def _load_universal_tokenizer(self, model_path: str, config: Optional[Any], token: Optional[str]) -> Any:
+        """
+        Universal tokenizer loader.
+        1. Attempts standard AutoTokenizer load with fast tokenizer.
+        2. Falls back to use_fast=False.
+        3. If tokenizer has 0 vocab (e.g. weights-only repository like Laszer/LatexCopilot),
+           intelligently falls back to base model tokenizer based on config._name_or_path or model_type.
+        4. Guarantees valid pad_token_id configuration.
+        """
+        tok = None
+        # 1. Fast tokenizer attempt
+        try:
+            tok = AutoTokenizer.from_pretrained(
+                model_path,
+                token=token,
+                trust_remote_code=True
+            )
+        except Exception as fast_err:
+            print(f"[TeXa AI Engine] Fast tokenizer load notice ({fast_err}), trying use_fast=False...")
+
+        # 2. Slow tokenizer attempt
+        if tok is None:
+            try:
+                tok = AutoTokenizer.from_pretrained(
+                    model_path,
+                    token=token,
+                    trust_remote_code=True,
+                    use_fast=False
+                )
+            except Exception as slow_err:
+                print(f"[TeXa AI Engine] Slow tokenizer load notice: {slow_err}")
+
+        # 3. Fallback for weights-only or empty vocab tokenizers
+        if tok is None or getattr(tok, "vocab_size", 0) == 0:
+            base_hint = None
+            if config is not None:
+                orig_name = getattr(config, "_name_or_path", "")
+                if orig_name and orig_name != model_path and not os.path.exists(orig_name):
+                    base_hint = orig_name
+                if not base_hint:
+                    mtype = getattr(config, "model_type", "").lower()
+                    type_fallbacks = {
+                        "gpt2": "gpt2",
+                        "llama": "meta-llama/Llama-3.2-1B-Instruct",
+                        "gemma": "google/gemma-2-2b",
+                        "gemma2": "google/gemma-2-2b",
+                        "gemma3_text": "google/gemma-3-1b-it",
+                        "t5": "google-t5/t5-small",
+                        "mt5": "google/mt5-small",
+                        "qwen": "Qwen/Qwen2.5-Coder-1.5B",
+                        "qwen2": "Qwen/Qwen2.5-Coder-1.5B",
+                        "mistral": "mistralai/Mistral-7B-v0.1"
+                    }
+                    base_hint = type_fallbacks.get(mtype, "gpt2")
+
+            if base_hint:
+                print(f"[TeXa AI Engine] Tokenizer files missing/empty in {model_path}. Using base architecture tokenizer: {base_hint}")
+                try:
+                    tok = AutoTokenizer.from_pretrained(base_hint, token=token, trust_remote_code=True)
+                except Exception as base_err:
+                    print(f"[TeXa AI Engine] Base tokenizer load failed for {base_hint}: {base_err}")
+                    tok = AutoTokenizer.from_pretrained("gpt2", token=token)
+
+        if tok is None:
+            raise RuntimeError(f"Could not initialize a valid tokenizer for model at {model_path}.")
+
+        # Ensure padding token is set
+        if tok.pad_token_id is None:
+            if tok.eos_token_id is not None:
+                tok.pad_token_id = tok.eos_token_id
+                tok.pad_token = tok.eos_token
+            else:
+                tok.add_special_tokens({'pad_token': '[PAD]'})
+
+        return tok
+
     def load_model(self, model_id: str) -> bool:
         """
-        Explicitly loads and activates selected model into memory on the appropriate device.
+        Explicitly loads and activates selected model into memory on the prioritized device (GPU/MPS/CPU).
+        Universally supports all model architectures (Causal LM, Seq2Seq LM, AutoModel).
         Thread-safe and caches loaded model to prevent redundant reloads.
         """
         with self.inference_lock:
@@ -381,6 +510,11 @@ class AIEngineManager:
                 self.status_message = f"PyTorch / Transformers not available: {TORCH_IMPORT_ERROR}"
                 print(f"[TeXa AI Engine] {self.status_message}")
                 return False
+
+            # Always check for top-priority hardware acceleration (CUDA or MPS) on every load
+            target_device, target_dtype = self.detect_optimal_device()
+            self.device = target_device
+            self.torch_dtype = target_dtype
 
             self.status = "loading"
             self.status_message = f"Loading model {model_id} into memory on {self.device.upper()}..."
@@ -398,74 +532,101 @@ class AIEngineManager:
                     del self.tokenizer
                     self.tokenizer = None
 
-                if self.device == "mps" and torch is not None:
+                if hasattr(torch, "mps") and torch.backends.mps.is_available():
                     torch.mps.empty_cache()
-                elif self.device == "cuda" and torch is not None:
+                if hasattr(torch, "cuda") and torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
-                # Load Tokenizer (fast with fallback to slow tokenizer for SentencePiece/TikToken)
+                # 1. Load Model Config to detect architecture & encoder-decoder properties
+                config = None
                 try:
-                    self.tokenizer = AutoTokenizer.from_pretrained(
+                    config = AutoConfig.from_pretrained(
                         model_path,
                         token=token_to_use,
                         trust_remote_code=True
                     )
-                except Exception as fast_tok_err:
-                    print(f"[TeXa AI Engine] Fast tokenizer load failed ({fast_tok_err}), trying use_fast=False...")
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        model_path,
-                        token=token_to_use,
-                        trust_remote_code=True,
-                        use_fast=False
-                    )
+                except Exception as cfg_err:
+                    print(f"[TeXa AI Engine] AutoConfig warning ({cfg_err}), proceeding with defaults...")
 
-                # Ensure pad token is defined
-                if self.tokenizer.pad_token_id is None:
-                    if self.tokenizer.eos_token_id is not None:
-                        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-                        self.tokenizer.pad_token = self.tokenizer.eos_token
-                    else:
-                        self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+                self.is_encoder_decoder = bool(getattr(config, "is_encoder_decoder", False)) if config else False
 
-                # Load Model Weights
-                target_dtype = self.torch_dtype or torch.float32
-                try:
-                    if self.device == "mps":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path,
-                            token=token_to_use,
-                            torch_dtype=target_dtype,
-                            trust_remote_code=True,
-                            low_cpu_mem_usage=True
-                        )
-                        self.model.to("mps")
-                    elif self.device == "cuda":
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path,
-                            token=token_to_use,
-                            torch_dtype=target_dtype,
-                            device_map="auto",
-                            trust_remote_code=True
-                        )
-                    else:
-                        self.model = AutoModelForCausalLM.from_pretrained(
-                            model_path,
-                            token=token_to_use,
-                            torch_dtype=torch.float32,
-                            trust_remote_code=True,
-                            low_cpu_mem_usage=True
-                        )
-                except Exception as primary_dev_err:
-                    print(f"[TeXa AI Engine] Device load warning ({primary_dev_err}), falling back to CPU float32...")
-                    self.device = "cpu"
-                    self.torch_dtype = torch.float32
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        model_path,
-                        token=token_to_use,
-                        torch_dtype=torch.float32,
-                        trust_remote_code=True,
-                        low_cpu_mem_usage=True
-                    )
+                # 2. Universal Tokenizer Loading
+                self.tokenizer = self._load_universal_tokenizer(model_path, config, token_to_use)
+
+                # 3. Determine Model Classes & Precision Dtype
+                # Pick model class based on encoder-decoder flag (Seq2Seq for T5/MT5, CausalLM for LLaMA/GPT2/Gemma/Qwen)
+                if self.is_encoder_decoder:
+                    candidate_classes = [AutoModelForSeq2SeqLM, AutoModelForCausalLM, AutoModel]
+                else:
+                    candidate_classes = [AutoModelForCausalLM, AutoModelForSeq2SeqLM, AutoModel]
+
+                # Specific dtype adjustments for numerical stability on MPS:
+                # GPT-2 and MT5 architectures run most stably in float32 on MPS
+                model_type_str = getattr(config, "model_type", "").lower() if config else ""
+                if self.device == "mps" and ("gpt2" in model_type_str or "gpt2" in model_path.lower() or self.is_encoder_decoder):
+                    chosen_dtype = torch.float32
+                else:
+                    chosen_dtype = self.torch_dtype or torch.float32
+
+                loaded_successfully = False
+                last_error = None
+
+                # Attempt loading with candidates on target device
+                for model_cls in candidate_classes:
+                    try:
+                        print(f"[TeXa AI Engine] Attempting load with {model_cls.__name__} (dtype: {chosen_dtype})...")
+                        if self.device == "mps":
+                            self.model = model_cls.from_pretrained(
+                                model_path,
+                                token=token_to_use,
+                                torch_dtype=chosen_dtype,
+                                trust_remote_code=True,
+                                low_cpu_mem_usage=True
+                            )
+                            self.model.to("mps")
+                        elif self.device == "cuda":
+                            self.model = model_cls.from_pretrained(
+                                model_path,
+                                token=token_to_use,
+                                torch_dtype=chosen_dtype,
+                                device_map="auto",
+                                trust_remote_code=True
+                            )
+                        else:
+                            self.model = model_cls.from_pretrained(
+                                model_path,
+                                token=token_to_use,
+                                torch_dtype=torch.float32,
+                                trust_remote_code=True,
+                                low_cpu_mem_usage=True
+                            )
+                        loaded_successfully = True
+                        break
+                    except Exception as cls_err:
+                        last_error = cls_err
+                        print(f"[TeXa AI Engine] {model_cls.__name__} load attempt notice: {cls_err}")
+
+                # If primary device load failed, attempt CPU fallback for this model
+                if not loaded_successfully:
+                    print(f"[TeXa AI Engine] Primary device ({self.device}) load failed ({last_error}). Falling back to CPU float32...")
+                    for model_cls in candidate_classes:
+                        try:
+                            self.model = model_cls.from_pretrained(
+                                model_path,
+                                token=token_to_use,
+                                torch_dtype=torch.float32,
+                                trust_remote_code=True,
+                                low_cpu_mem_usage=True
+                            )
+                            self.device = "cpu"
+                            self.torch_dtype = torch.float32
+                            loaded_successfully = True
+                            break
+                        except Exception as cpu_err:
+                            last_error = cpu_err
+
+                if not loaded_successfully or self.model is None:
+                    raise RuntimeError(f"Universal loader could not instantiate model: {last_error}")
 
                 self.model.eval()
                 self.loaded_model_id = model_id
@@ -473,7 +634,7 @@ class AIEngineManager:
                 self.status = "ready"
                 self.progress = 100
                 self.status_message = f"Model {model_id} loaded successfully on {self.device.upper()}."
-                print(f"[TeXa AI Engine] Active model loaded: {model_id} ({self.device.upper()})")
+                print(f"[TeXa AI Engine] Active model loaded: {model_id} ({self.device.upper()})", flush=True)
                 return True
 
             except Exception as e:
@@ -484,7 +645,7 @@ class AIEngineManager:
 
     def _generate_raw(self, messages: List[Dict[str, str]], max_new_tokens: int = 768, temperature: float = 0.0) -> str:
         """
-        Thread-safe inference execution against the loaded PyTorch model.
+        Thread-safe inference execution against any loaded PyTorch model (Causal LM or Seq2Seq LM).
         Supports instant cancellation through InterruptStoppingCriteria.
         Returns generated response string.
         """
@@ -523,7 +684,7 @@ class AIEngineManager:
 
                 # Apply chat template or construct dialogue prompt
                 prompt_text = ""
-                if hasattr(self.tokenizer, "apply_chat_template") and self.tokenizer.chat_template:
+                if hasattr(self.tokenizer, "apply_chat_template") and getattr(self.tokenizer, "chat_template", None):
                     try:
                         prompt_text = self.tokenizer.apply_chat_template(
                             chat_messages,
@@ -536,14 +697,28 @@ class AIEngineManager:
 
                 if not prompt_text:
                     # Fallback formatted prompt compatible across standard LLM architectures
-                    formatted_turns = []
-                    for m in chat_messages:
-                        role_tag = "<|im_start|>" + m.get("role", "user") + "\n"
-                        formatted_turns.append(f"{role_tag}{m.get('content', '')}<|im_end|>")
-                    formatted_turns.append("<|im_start|>assistant\n")
-                    prompt_text = "\n".join(formatted_turns)
+                    # If this is a pure completion model (like GPT2 LaTeX fine-tuned or T5), feed direct content
+                    if getattr(self, "is_encoder_decoder", False) or "gpt2" in getattr(self, "loaded_model_id", "").lower():
+                        # Extract the main user prompt text directly
+                        user_texts = [m.get("content", "") for m in chat_messages if m.get("role") == "user"]
+                        prompt_text = "\n".join(user_texts) if user_texts else (chat_messages[0]["content"] if chat_messages else "LaTeX")
+                    else:
+                        formatted_turns = []
+                        for m in chat_messages:
+                            role_tag = "<|im_start|>" + m.get("role", "user") + "\n"
+                            formatted_turns.append(f"{role_tag}{m.get('content', '')}<|im_end|>")
+                        formatted_turns.append("<|im_start|>assistant\n")
+                        prompt_text = "\n".join(formatted_turns)
+
+                if not prompt_text or not prompt_text.strip():
+                    prompt_text = "Generate LaTeX"
 
                 inputs = self.tokenizer(prompt_text, return_tensors="pt")
+
+                # Check for empty token tensor
+                if inputs["input_ids"].numel() == 0:
+                    inputs = self.tokenizer("LaTeX document", return_tensors="pt")
+
                 input_ids = inputs["input_ids"].to(self.device)
                 attention_mask = inputs.get("attention_mask", None)
                 if attention_mask is not None:
@@ -568,30 +743,46 @@ class AIEngineManager:
                 # Configure cancellation stopping criteria
                 stopping_criteria = StoppingCriteriaList([InterruptStoppingCriteria(self.stop_event)])
 
+                # Safe generation parameters
+                gen_kwargs = {
+                    "max_new_tokens": min(max_new_tokens, 1024),
+                    "stopping_criteria": stopping_criteria,
+                    "pad_token_id": self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                }
+                if eos_ids:
+                    gen_kwargs["eos_token_id"] = eos_ids if len(eos_ids) > 1 else eos_ids[0]
+
+                if temperature > 0.0:
+                    gen_kwargs["temperature"] = max(temperature, 0.05)
+                    gen_kwargs["top_p"] = 0.9
+                    gen_kwargs["do_sample"] = True
+                else:
+                    gen_kwargs["do_sample"] = False
+
+                if attention_mask is not None:
+                    gen_kwargs["attention_mask"] = attention_mask
+
                 with torch.inference_mode():
                     output_ids = self.model.generate(
                         input_ids=input_ids,
-                        attention_mask=attention_mask,
-                        max_new_tokens=min(max_new_tokens, 1024),
-                        temperature=temperature if temperature > 0.0 else 0.05,
-                        top_p=0.9 if temperature > 0.0 else 1.0,
-                        do_sample=temperature > 0.0,
-                        repetition_penalty=1.12,
-                        pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
-                        eos_token_id=eos_ids if eos_ids else self.tokenizer.eos_token_id,
-                        stopping_criteria=stopping_criteria
+                        **gen_kwargs
                     )
 
                 # Check if generation was interrupted mid-run
                 if self.stop_event.is_set():
                     print("[TeXa AI Engine] Generation terminated by user cancellation request.", flush=True)
-                    if self.device == "mps" and torch is not None:
+                    if self.device == "mps" and torch is not None and hasattr(torch, "mps"):
                         torch.mps.empty_cache()
                     raise RuntimeError("Model generation cancelled by user.")
 
-                # Decode only the generated response tokens
-                generated_tokens = output_ids[0][input_ids.shape[1]:]
-                response_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+                # Universal decoding: Seq2Seq vs Causal LM
+                if getattr(self, "is_encoder_decoder", False):
+                    response_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True).strip()
+                else:
+                    generated_tokens = output_ids[0][input_ids.shape[1]:]
+                    if len(generated_tokens) == 0:
+                        generated_tokens = output_ids[0]
+                    response_text = self.tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
 
                 # Print the response of the model in the system terminal
                 print("\n" + "=" * 60)
@@ -599,8 +790,10 @@ class AIEngineManager:
                 print(response_text)
                 print("=" * 60 + "\n", flush=True)
 
-                if self.device == "mps" and torch is not None:
+                if self.device == "mps" and torch is not None and hasattr(torch, "mps"):
                     torch.mps.empty_cache()
+                elif self.device == "cuda" and torch is not None and hasattr(torch, "cuda"):
+                    torch.cuda.empty_cache()
 
                 return response_text
 
