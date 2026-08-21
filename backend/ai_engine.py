@@ -119,8 +119,8 @@ class AIEngineManager:
         self.eta = "0s"
         self.download_thread: Optional[threading.Thread] = None
 
-        # HF Token
-        self.hf_token: Optional[str] = os.environ.get("HF_TOKEN")
+        # HF Token (guaranteed None if empty or unset)
+        self.hf_token: Optional[str] = self._clean_token(os.environ.get("HF_TOKEN"))
 
         # Loaded PyTorch model state
         self.loaded_model_id: Optional[str] = None
@@ -138,6 +138,18 @@ class AIEngineManager:
         # Detect optimal hardware acceleration
         self._detect_device()
 
+    def _clean_token(self, token: Any) -> Optional[str]:
+        """
+        Sanitize Hugging Face access token.
+        Returns a valid non-empty token string or None.
+        Prevents illegal 'Bearer ' empty header errors in huggingface_hub and requests.
+        """
+        if token is not None and isinstance(token, str):
+            cleaned = token.strip()
+            if cleaned and cleaned.lower() not in ("none", "null", "undefined", '""', "''"):
+                return cleaned
+        return None
+
     def cancel_generation(self):
         """
         Signals active PyTorch model token generation to terminate immediately.
@@ -148,11 +160,13 @@ class AIEngineManager:
 
     def set_hf_token(self, token: Optional[str]):
         """Update Hugging Face token for downloads and model requests."""
-        if token:
-            self.hf_token = token.strip()
-            os.environ["HF_TOKEN"] = self.hf_token
+        cleaned = self._clean_token(token)
+        self.hf_token = cleaned
+        if cleaned:
+            os.environ["HF_TOKEN"] = cleaned
         else:
-            self.hf_token = None
+            if "HF_TOKEN" in os.environ:
+                del os.environ["HF_TOKEN"]
 
     def _detect_device(self):
         """Detect and configure optimal hardware acceleration device (Apple MPS, CUDA, or CPU)."""
@@ -308,7 +322,7 @@ class AIEngineManager:
             self.status_message = f"Downloading {model_id}... Meanwhile, sit back, relax, and grab a coffee ☕!"
             print(f"[TeXa AI Engine] Starting download for {model_id} into {target_local_dir}...")
 
-            token_to_use = self.hf_token or os.environ.get("HF_TOKEN")
+            token_to_use = self._clean_token(self.hf_token) or self._clean_token(os.environ.get("HF_TOKEN"))
 
             # Snapshot download all model files (including tokenizer models, config, weights)
             download_path = snapshot_download(
@@ -374,7 +388,7 @@ class AIEngineManager:
 
             try:
                 model_path = self._resolve_model_path(model_id)
-                token_to_use = self.hf_token or os.environ.get("HF_TOKEN")
+                token_to_use = self._clean_token(self.hf_token) or self._clean_token(os.environ.get("HF_TOKEN"))
 
                 # Unload previous model from GPU/MPS memory if present
                 if self.model is not None:

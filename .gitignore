@@ -2,6 +2,12 @@
 # TeXa Root Git Ignore
 # ==============================================================================
 
+# Environment & Secrets Configuration
+.env
+.env.*
+.env.local
+!.env.example
+
 # Python Virtual Environments
 venv/
 .venv/

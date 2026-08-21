@@ -389,12 +389,13 @@ def get_ai_models():
 @app.post("/api/ai/token")
 def set_hf_token(req: SetHFTokenRequest):
     """Save Hugging Face Access Token to .env and runtime state."""
-    token_val = req.hf_token.strip()
+    raw_token = (req.hf_token or "").strip()
+    token_val = raw_token if raw_token and raw_token.lower() not in ("none", "null", "undefined") else None
     config_state.update_config({"hf_token": token_val})
     ai_engine.set_hf_token(token_val)
     return {
         "status": "success",
-        "message": "Hugging Face token saved to .env and active runtime."
+        "message": "Hugging Face token updated."
     }
 
 @app.post("/api/ai/select")
@@ -405,9 +406,11 @@ def select_ai_model(req: SelectModelRequest):
         raise HTTPException(status_code=400, detail="Model ID cannot be empty.")
     
     # Save HF token if provided
-    if req.hf_token:
-        config_state.update_config({"hf_token": req.hf_token.strip()})
-        ai_engine.set_hf_token(req.hf_token.strip())
+    raw_token = (req.hf_token or "").strip()
+    token_val = raw_token if raw_token and raw_token.lower() not in ("none", "null", "undefined") else None
+    if token_val is not None:
+        config_state.update_config({"hf_token": token_val})
+        ai_engine.set_hf_token(token_val)
 
     # Update app configuration
     config_state.update_config({
@@ -416,7 +419,7 @@ def select_ai_model(req: SelectModelRequest):
     })
 
     # Trigger background download
-    ai_engine.start_model_download(model_id, req.hf_token)
+    ai_engine.start_model_download(model_id, token_val)
 
     return {
         "status": "downloading",
@@ -434,9 +437,11 @@ async def load_ai_model(req: LoadModelRequest):
     if not model_id:
         raise HTTPException(status_code=400, detail="Model ID cannot be empty.")
     
-    if req.hf_token:
-        config_state.update_config({"hf_token": req.hf_token.strip()})
-        ai_engine.set_hf_token(req.hf_token.strip())
+    raw_token = (req.hf_token or "").strip()
+    token_val = raw_token if raw_token and raw_token.lower() not in ("none", "null", "undefined") else None
+    if token_val is not None:
+        config_state.update_config({"hf_token": token_val})
+        ai_engine.set_hf_token(token_val)
 
     # Run heavy model loading in a background worker thread to keep server responsive
     success = await asyncio.to_thread(ai_engine.load_model, model_id)

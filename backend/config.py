@@ -67,10 +67,18 @@ class ConfigState:
                     setattr(self.config, key, value)
 
         # If hf_token was updated, persist to .env and environment
-        if "hf_token" in new_data and new_data["hf_token"] is not None:
-            token_val = str(new_data["hf_token"]).strip()
-            os.environ["HF_TOKEN"] = token_val
-            self.config.hf_token = token_val
+        if "hf_token" in new_data:
+            raw_tok = new_data["hf_token"]
+            token_val = str(raw_tok).strip() if raw_tok is not None else ""
+            if token_val and token_val.lower() not in ("none", "null", "undefined"):
+                os.environ["HF_TOKEN"] = token_val
+                self.config.hf_token = token_val
+            else:
+                token_val = ""
+                self.config.hf_token = None
+                if "HF_TOKEN" in os.environ:
+                    del os.environ["HF_TOKEN"]
+
             try:
                 # Ensure .env file exists
                 if not os.path.exists(ENV_PATH):
