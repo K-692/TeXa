@@ -124,14 +124,14 @@ export default function EditorPage({
     }
   }, [activeFile]);
 
-  // Auto-compile document on first editor page load
+  // Auto-compile document on first editor page load once content is ready
   const hasAutoCompiledRef = useRef(false);
   useEffect(() => {
-    if (!hasAutoCompiledRef.current && onCompile) {
+    if (!hasAutoCompiledRef.current && onCompile && editorContent && editorContent.trim().length > 0) {
       hasAutoCompiledRef.current = true;
       onCompile(editorContent);
     }
-  }, []);
+  }, [editorContent]);
 
   // Update PDF viewer timestamp when PDF recompiles
   useEffect(() => {
@@ -1106,29 +1106,53 @@ export default function EditorPage({
                         transition: 'width 0.15s ease, height 0.15s ease'
                       }}
                     >
-                      <iframe
-                        key={`pdf-viewer-${activeFile}-${pdfScale}-${pdfTimestamp}`}
-                        src={`${pdfUrl}${pdfUrl.includes('?') ? '&' : '?'}t=${pdfTimestamp}#zoom=${pdfScale}&toolbar=0&navpanes=0`}
-                        className="pdf-iframe"
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          border: 'none',
-                          pointerEvents: (isDraggingAi || isResizingAi) ? 'none' : 'auto'
-                        }}
-                        title="LaTeX PDF Output"
-                      />
+                      {(() => {
+                        const cleanBase = pdfUrl.split('&t=')[0].split('?t=')[0];
+                        const sep = cleanBase.includes('?') ? '&' : '?';
+                        const iframeSrc = `${cleanBase}${sep}t=${pdfTimestamp}#zoom=${pdfScale}&toolbar=0&navpanes=0`;
+                        return (
+                          <iframe
+                            key={`pdf-viewer-${activeFile}-${pdfScale}-${pdfTimestamp}`}
+                            src={iframeSrc}
+                            className="pdf-iframe"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              border: 'none',
+                              pointerEvents: (isDraggingAi || isResizingAi) ? 'none' : 'auto'
+                            }}
+                            title="LaTeX PDF Output"
+                          />
+                        );
+                      })()}
                     </div>
                   </div>
                 ) : (
-
-
                   <div className="pdf-empty-state">
-                    <FileText size={32} style={{ opacity: 0.5 }} />
-                    <div>PDF Output Ready</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
-                      {isCompiling ? 'Compiling document...' : 'Click Compile or edit text to view output.'}
-                    </div>
+                    {isCompiling ? (
+                      <>
+                        <RefreshCw size={32} className="animate-spin" style={{ opacity: 0.7, color: 'var(--accent-primary)' }} />
+                        <div style={{ fontWeight: 600 }}>Compiling Document...</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                          Generating live PDF preview...
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <FileText size={32} style={{ opacity: 0.5 }} />
+                        <div>PDF Output Ready</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                          Click Compile or edit text to view output.
+                        </div>
+                        <button
+                          className="btn-minimal btn-primary"
+                          style={{ marginTop: '8px', fontSize: '0.75rem', padding: '4px 12px' }}
+                          onClick={() => onCompile && onCompile(editorContent)}
+                        >
+                          Compile Document
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

@@ -29,8 +29,12 @@ class ConfigState:
     """Singleton configuration manager for backend runtime."""
     def __init__(self):
         self.config = AppConfig()
-        # Ensure default project directory exists
-        norm_dir = os.path.expanduser(self.config.working_directory)
+        # Ensure default project directory exists and is normalized to absolute path
+        raw_dir = self.config.working_directory
+        if not os.path.isabs(raw_dir):
+            norm_dir = os.path.abspath(os.path.join(TEXA_DIR, raw_dir))
+        else:
+            norm_dir = os.path.abspath(os.path.expanduser(raw_dir))
         self.config.working_directory = norm_dir
         os.makedirs(norm_dir, exist_ok=True)
 
@@ -44,7 +48,11 @@ class ConfigState:
         for key, value in new_data.items():
             if hasattr(self.config, key) and value is not None:
                 if key == "working_directory":
-                    dir_val = os.path.expanduser(str(value).strip())
+                    raw_val = str(value).strip()
+                    if not os.path.isabs(raw_val):
+                        dir_val = os.path.abspath(os.path.join(TEXA_DIR, raw_val))
+                    else:
+                        dir_val = os.path.abspath(os.path.expanduser(raw_val))
                     if len(dir_val) > 1 and dir_val.endswith("/"):
                         dir_val = dir_val.rstrip("/")
                     os.makedirs(dir_val, exist_ok=True)

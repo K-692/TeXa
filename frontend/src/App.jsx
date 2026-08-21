@@ -35,7 +35,7 @@ export default function App() {
   const [editorContent, setEditorContent] = useState('');
   const [openTabs, setOpenTabs] = useState(['main.tex']);
   const [isCompiling, setIsCompiling] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState('/api/pdf?file=main.pdf');
   const [pdfTimestamp, setPdfTimestamp] = useState(Date.now());
   const [diagnostics, setDiagnostics] = useState([]);
   const [logOutput, setLogOutput] = useState('');
@@ -72,14 +72,13 @@ export default function App() {
 
     checkModelStatus();
 
-    // Read active document content
+    // Read active document content and compile
     fetch('/api/file/read?path=main.tex')
       .then(res => res.json())
       .then(data => {
         if (data && data.content) {
           setEditorContent(data.content);
-          // Initial background compile for live preview
-          handleCompile(data.content);
+          handleCompile(data.content, 'main.tex');
         }
       })
       .catch(() => {});
@@ -113,7 +112,7 @@ export default function App() {
         if (data && data.content !== undefined) {
           setEditorContent(data.content);
           if (config.auto_validate ?? true) {
-            handleCompile(data.content);
+            handleCompile(data.content, relPath);
           }
         }
       })
@@ -130,32 +129,34 @@ export default function App() {
 
   // Save active file content to backend
   const handleSaveAll = () => {
+    const targetFile = config.active_file || 'main.tex';
     fetch('/api/file/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        rel_path: config.active_file || 'main.tex',
+        rel_path: targetFile,
         content: editorContent
       })
     })
       .then(res => res.json())
       .then(() => {
         // Trigger background compile on save
-        handleCompile(editorContent);
+        handleCompile(editorContent, targetFile);
       })
       .catch(err => console.error('Failed to save file:', err));
   };
 
   // Compile Handler - Directly invokes /api/compile which persists latest buffer and returns diagnostics
-  const handleCompile = (currentContent = null) => {
+  const handleCompile = (currentContent = null, targetFile = null) => {
     setIsCompiling(true);
     const contentToSend = (typeof currentContent === 'string' && currentContent !== null) ? currentContent : editorContent;
+    const fileToCompile = targetFile || config.active_file || 'main.tex';
 
     return fetch('/api/compile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        rel_path: config.active_file || 'main.tex',
+        rel_path: fileToCompile,
         content: contentToSend
       })
     })
@@ -164,7 +165,7 @@ export default function App() {
         setIsCompiling(false);
         setDiagnostics(data.diagnostics || []);
         setLogOutput(data.log_output || '');
-        if (data.pdf_available && data.pdf_url) {
+        if (data.pdf_url) {
           setPdfUrl(data.pdf_url);
           setPdfTimestamp(data.timestamp || Date.now());
         }
@@ -282,24 +283,51 @@ export default function App() {
       // Step 3: Fetch active document content & verify file buffers
       setLaunchStep(3);
       setLaunchProgress(85);
-      setLaunchMessage('Mounting Monaco LaTeX editor & loading workspace files...');
+      setLaunchMessage('Mounting Monaco LaTeX editor & compiling workspace preview...');
 
       const activeFile = newConfigData.active_file || config.active_file || 'main.tex';
+      let loadedContent = '';
       const fileRes = await fetch(`/api/file/read?path=${encodeURIComponent(activeFile)}`).catch(() => null);
       if (fileRes && fileRes.ok) {
         const fileData = await fileRes.json().catch(() => null);
         if (fileData && fileData.content !== undefined) {
-          setEditorContent(fileData.content);
+          loadedContent = fileData.content;
+          setEditorContent(loadedContent);
         }
       }
 
+      // Pre-compile document so PDF is immediately ready upon entering editor
+      try {
+        const compRes = await fetch('/api/compile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rel_path: activeFile,
+            content: loadedContent
+          })
+        });
+        const compData = await compRes.json();
+        if (compData && compData.pdf_url) {
+          setPdfUrl(compData.pdf_url);
+          setPdfTimestamp(compData.timestamp || Date.now());
+        }
+        if (compData && compData.diagnostics) {
+          setDiagnostics(compData.diagnostics);
+        }
+        if (compData && compData.log_output) {
+          setLogOutput(compData.log_output);
+        }
+      } catch (compileErr) {
+        console.warn('Initial compilation warning:', compileErr);
+      }
+
       // Step 4: Finalizing & Mounting workspace (smooth automatic transition)
-      await new Promise(r => setTimeout(r, 250));
+      await new Promise(r => setTimeout(r, 200));
       setLaunchStep(4);
       setLaunchProgress(100);
       setLaunchMessage('Workspace ready! Launching editor...');
 
-      await new Promise(r => setTimeout(r, 300));
+      await new Promise(r => setTimeout(r, 250));
 
       // Automatic entry into the editor
       setIsLaunchingWorkspace(false);

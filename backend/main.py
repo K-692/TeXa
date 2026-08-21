@@ -293,28 +293,33 @@ async def compile_document(req: CompileRequest):
     """
     cfg = config_state.get_config()
     
-    # Auto-save file content if provided in request
+    # Resolve target relative path
+    rel_path = req.rel_path or cfg.active_file or "main.tex"
+
+    # Auto-save file content if provided in request (protect against accidental empty overwrite on initial mount)
     if req.content is not None:
-        file_manager.write_file(cfg.working_directory, req.rel_path, req.content)
+        target_full = os.path.join(cfg.working_directory, rel_path)
+        if not (req.content == "" and os.path.exists(target_full) and os.path.getsize(target_full) > 0):
+            file_manager.write_file(cfg.working_directory, rel_path, req.content)
 
     # Perform compilation
     success, pdf_path, diagnostics, log_output = latex_engine.compile(
         working_dir=cfg.working_directory,
-        main_file=req.rel_path,
+        main_file=rel_path,
         engine_preference=cfg.compiler_engine
     )
 
     # Broadcast log to websocket
     await broadcast_log(log_output)
 
-    pdf_available = bool(success and pdf_path and os.path.exists(pdf_path))
-    pdf_filename = os.path.basename(pdf_path) if (pdf_path and os.path.exists(pdf_path)) else f"{os.path.splitext(os.path.basename(req.rel_path))[0]}.pdf"
+    pdf_available = bool(pdf_path and os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0)
+    pdf_filename = os.path.basename(pdf_path) if pdf_available else f"{os.path.splitext(os.path.basename(rel_path))[0]}.pdf"
     cache_bust = int(time.time() * 1000)
 
     return {
         "success": success,
         "pdf_available": pdf_available,
-        "pdf_url": f"/api/pdf?file={pdf_filename}&t={cache_bust}" if pdf_available else None,
+        "pdf_url": f"/api/pdf?file={pdf_filename}&t={cache_bust}",
         "pdf_filename": pdf_filename,
         "timestamp": cache_bust,
         "diagnostics": diagnostics,
@@ -328,22 +333,31 @@ def get_pdf(file: Optional[str] = Query(None), t: Optional[str] = Query(None)):
     Ensures browser preview immediately refreshes whenever a newly compiled PDF is saved.
     """
     cfg = config_state.get_config()
-    target_file = file or (os.path.splitext(cfg.active_file)[0] + ".pdf")
+    target_file = file or (os.path.splitext(cfg.active_file or "main.tex")[0] + ".pdf")
+    target_file = os.path.basename(target_file)
     pdf_path = os.path.join(cfg.working_directory, target_file)
 
-    if not os.path.exists(pdf_path):
+    if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) == 0:
         # Trigger on-demand compilation if PDF file is not present yet
-        latex_engine.compile(cfg.working_directory, cfg.active_file)
+        active_tex = cfg.active_file or "main.tex"
+        latex_engine.compile(cfg.working_directory, active_tex)
 
-    if not os.path.exists(pdf_path):
+    if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) == 0:
         # Fallback to active file .pdf
-        base_name = os.path.splitext(cfg.active_file)[0]
+        base_name = os.path.splitext(cfg.active_file or "main.tex")[0]
         fallback_path = os.path.join(cfg.working_directory, f"{base_name}.pdf")
-        if os.path.exists(fallback_path):
+        if os.path.exists(fallback_path) and os.path.getsize(fallback_path) > 0:
             pdf_path = fallback_path
 
-    if not os.path.exists(pdf_path):
+    if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) == 0:
         # Fallback to main.pdf
+        fallback_main = os.path.join(cfg.working_directory, "main.pdf")
+        if os.path.exists(fallback_main) and os.path.getsize(fallback_main) > 0:
+            pdf_path = fallback_main
+
+    if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) == 0:
+        # If still missing, compile default template to guarantee a valid PDF
+        latex_engine.compile(cfg.working_directory, "main.tex")
         fallback_main = os.path.join(cfg.working_directory, "main.pdf")
         if os.path.exists(fallback_main):
             pdf_path = fallback_main
