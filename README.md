@@ -294,15 +294,33 @@ TeXa/
 
 ---
 
+## 💡 Community-Driven Growth & Feature Requests
+
+We want **TeXa** to grow and evolve with the community. You do not need to be a developer or know Git to help make TeXa better!
+
+### 📝 For Users & Non-Developers (Feature Requests & Bug Reports)
+If you encounter an issue, bug, or have an idea for a feature or workflow enhancement:
+- Simply fill out our Google Form to **state the problem, error, or bug**, and describe **how you want it to be fixed or improved**.
+- 👉 **[Submit Feature Request / Bug Report (Google Form)](https://docs.google.com/forms/d/e/1FAIpQLSeR6hntzn0B2xJVNbSDEIsRh0VEfj7sphraBley2C2gbgBsTA/viewform?usp=publish-editor)**
+
+### 📊 For Developers & Contributors (Community Wishlist & Tracker)
+All community submissions are automatically organized in our live Google Sheet so contributors can easily see what users need most:
+- Browse user-submitted ideas, feature requests, and bug reports.
+- **Note for Contributors**: When you pick up and complete any update or fix, please **add a comment in the Google Sheet** to notify the community and keep the tracker up to date.
+- 👉 **[View Community Responses & Feature Tracker (Google Sheet)](https://docs.google.com/spreadsheets/d/1EsD0ZcHB_pGo46sJiIzdJ3AiaOBXMp5qKfWvL9RRzK8/edit?usp=sharing)**
+
+---
+
 ## 🤝 Contributing
 
-Contributions, feature suggestions, and pull requests are welcome!
+Contributions, bug fixes, and feature implementations are warmly welcomed!
 
-1. Fork the repository.
-2. Create your feature branch (`git checkout -b feature/amazing-feature`).
-3. Commit your changes (`git commit -m 'Add amazing feature'`).
-4. Push to the branch (`git push origin feature/amazing-feature`).
-5. Open a Pull Request.
+1. Check the [Community Feature Tracker (Google Sheet)](https://docs.google.com/spreadsheets/d/1EsD0ZcHB_pGo46sJiIzdJ3AiaOBXMp5qKfWvL9RRzK8/edit?usp=sharing) or GitHub Issues to see what improvements users are requesting.
+2. Fork the repository.
+3. Create your feature branch (`git checkout -b feature/amazing-feature`).
+4. Commit your changes (`git commit -m 'Add amazing feature'`).
+5. Push to the branch (`git push origin feature/amazing-feature`).
+6. Open a Pull Request and leave a comment on the corresponding row in the Google Sheet once merged!
 
 ---
 
