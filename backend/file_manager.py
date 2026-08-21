@@ -1,0 +1,195 @@
+"""
+TeXa Workspace File Manager
+Manages directory files, loading/saving LaTeX documents, creating sample documents.
+"""
+
+import os
+import shutil
+from typing import List, Dict, Any
+
+DEFAULT_LATEX_TEMPLATE = r"""\documentclass[12pt, letterpaper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+
+\title{\textbf{TeXa LaTeX Document}}
+\author{Author Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+Welcome to \textbf{TeXa} --- a super minimalist, AI-powered LaTeX editor running locally on your machine.
+
+\section{Mathematics Example}
+Here is a sample LaTeX equation:
+\begin{equation}
+    f(x) = \int_{-\infty}^{\infty} \hat{f}(\xi) \, e^{2\pi i \xi x} \, d\xi
+\end{equation}
+
+\section{Continuous Validation Test}
+Continuous validation is enabled. Any syntax changes will instantly reflect in the log frame and PDF viewer.
+
+\end{document}
+"""
+
+class FileManager:
+    """Manages files and directories inside the active TeXa workspace."""
+
+    def list_files(self, working_dir: str) -> List[Dict[str, Any]]:
+        """
+        List files and directories in working directory in hierarchical tree order.
+        Includes depth level and parent_path for clean sidebar indentation and nested collapsing.
+        """
+        if not os.path.exists(working_dir):
+            os.makedirs(working_dir, exist_ok=True)
+
+        files_list: List[Dict[str, Any]] = []
+
+        def build_tree(current_dir: str, rel_parent: str = "", depth: int = 0):
+            try:
+                entries = os.listdir(current_dir)
+            except OSError:
+                return
+
+            dirs = []
+            files = []
+            for entry in entries:
+                # Exclude hidden files/dirs and build caches
+                if entry.startswith(".") or entry in ("__pycache__", "build", "dist", "node_modules", "venv"):
+                    continue
+                full_path = os.path.join(current_dir, entry)
+                rel_path = os.path.join(rel_parent, entry) if rel_parent else entry
+                if os.path.isdir(full_path):
+                    dirs.append((entry, rel_path, full_path))
+                else:
+                    ext = os.path.splitext(entry)[1].lower()
+                    files.append((entry, rel_path, ext))
+
+            # Sort folders first (case-insensitive), then files (case-insensitive)
+            dirs.sort(key=lambda x: x[0].lower())
+            files.sort(key=lambda x: x[0].lower())
+
+            for d_name, d_rel, d_full in dirs:
+                files_list.append({
+                    "name": d_name,
+                    "path": d_rel,
+                    "is_dir": True,
+                    "extension": "",
+                    "depth": depth,
+                    "parent_path": rel_parent
+                })
+                # Recurse into subdirectory
+                build_tree(d_full, d_rel, depth + 1)
+
+            for f_name, f_rel, ext in files:
+                files_list.append({
+                    "name": f_name,
+                    "path": f_rel,
+                    "is_dir": False,
+                    "extension": ext,
+                    "depth": depth,
+                    "parent_path": rel_parent
+                })
+
+        build_tree(working_dir, "", 0)
+
+        # If directory is empty, create default main.tex
+        if not files_list:
+            default_path = os.path.join(working_dir, "main.tex")
+            with open(default_path, "w", encoding="utf-8") as f:
+                f.write(DEFAULT_LATEX_TEMPLATE)
+            files_list.append({
+                "name": "main.tex",
+                "path": "main.tex",
+                "is_dir": False,
+                "extension": ".tex",
+                "depth": 0,
+                "parent_path": ""
+            })
+
+        return files_list
+
+    def read_file(self, working_dir: str, rel_path: str = "main.tex") -> str:
+        """Read content of a specific file in working directory."""
+        full_path = os.path.join(working_dir, rel_path)
+        if not os.path.exists(full_path):
+            if rel_path == "main.tex":
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.write(DEFAULT_LATEX_TEMPLATE)
+                return DEFAULT_LATEX_TEMPLATE
+            raise FileNotFoundError(f"File {rel_path} not found in {working_dir}")
+        
+        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+
+    def write_file(self, working_dir: str, rel_path: str, content: str) -> bool:
+        """Save content to a file in working directory."""
+        full_path = os.path.join(working_dir, rel_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+
+    def create_file(self, working_dir: str, rel_path: str, content: str = "", overwrite: bool = False) -> bool:
+        """Create a new file in working directory. Overwrite existing file/folder if overwrite=True."""
+        full_path = os.path.join(working_dir, rel_path)
+        if os.path.exists(full_path):
+            if not overwrite:
+                raise FileExistsError(f"File or folder '{rel_path}' already exists.")
+            # If overwriting, remove existing dir or file first
+            if os.path.isdir(full_path):
+                shutil.rmtree(full_path)
+            elif os.path.isfile(full_path):
+                os.remove(full_path)
+
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return True
+
+    def create_folder(self, working_dir: str, rel_path: str, overwrite: bool = False) -> bool:
+        """Create a new folder inside working directory. Overwrite existing folder/file if overwrite=True."""
+        full_path = os.path.join(working_dir, rel_path)
+        if os.path.exists(full_path):
+            if not overwrite:
+                raise FileExistsError(f"Folder or file '{rel_path}' already exists.")
+            # If overwriting, remove existing dir or file first
+            if os.path.isdir(full_path):
+                shutil.rmtree(full_path)
+            elif os.path.isfile(full_path):
+                os.remove(full_path)
+
+        os.makedirs(full_path, exist_ok=True)
+        return True
+
+    def delete_file(self, working_dir: str, rel_path: str) -> bool:
+        """Delete a file (or folder) from the working directory."""
+        full_path = os.path.join(working_dir, rel_path)
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(f"Path '{rel_path}' does not exist.")
+        if os.path.isdir(full_path):
+            shutil.rmtree(full_path)
+        else:
+            os.remove(full_path)
+        return True
+
+    def rename_file(self, working_dir: str, old_rel_path: str, new_rel_path: str) -> bool:
+        """Rename an existing file or directory in working directory."""
+        old_full = os.path.join(working_dir, old_rel_path)
+        new_full = os.path.join(working_dir, new_rel_path)
+        if not os.path.exists(old_full):
+            raise FileNotFoundError(f"Path {old_rel_path} does not exist.")
+        if os.path.exists(new_full):
+            raise FileExistsError(f"Target path {new_rel_path} already exists.")
+        os.makedirs(os.path.dirname(new_full), exist_ok=True)
+        os.rename(old_full, new_full)
+        return True
+
+# Global File Manager instance
+file_manager = FileManager()
+

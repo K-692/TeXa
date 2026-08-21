@@ -1,0 +1,26 @@
+# ==============================================================================
+# TeXa - Backend Python Dependencies
+# ==============================================================================
+
+# Web API Framework & Asynchronous Networking
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+python-dotenv>=1.0.0
+aiofiles>=23.2.0
+websockets>=12.0
+watchfiles>=0.21.0
+requests>=2.31.0
+psutil>=5.9.0
+
+# PyTorch Deep Learning & Hardware Acceleration (MPS / CUDA / CPU)
+torch>=2.2.0
+
+# Hugging Face Transformers & AI Inference Pipeline
+transformers>=4.40.0
+accelerate>=0.28.0
+huggingface-hub>=0.22.0
+safetensors>=0.4.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+tiktoken>=0.6.0
